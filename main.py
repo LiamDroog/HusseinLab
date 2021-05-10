@@ -37,8 +37,8 @@ def main():
         readOut()
 
     def Draw():
-        # draws all on-screen controls, and assigns their event commands
-        global lbl_pos, lbl_frame
+        # draws all on-screen controls and assigns their event commands
+        global lbl_pos, lbl_frame, gcode_entry
 
         rowarr = list(i for i in range(rowLen))
         colarr = list(i for i in range(colLen))
@@ -90,7 +90,6 @@ def main():
         lbl_pos.pack()
 
         # gcode input box
-        global gcode_entry
         gcode_entry = tk.Entry(master=window)
         gcode_entry.grid(row=4, columnspan=3, sticky='ew')
 
@@ -139,10 +138,11 @@ def main():
     s.write(b"\r\n\r\n")
     time.sleep(2)  # Wait for grbl to initialize
     s.flushInput()  # Flush startup text in serial input
-    s.write('g21g90\n'.encode('UTF-8'))
-    readOut()
-    s.write('g92x0y0\n'.encode('UTF-8'))
-    readOut()
+    with open('startup.txt', 'r') as f:
+        for line in f:
+            l = line.strip()  # Strip all EOL characters for consistency
+            sendCommand(l + '\n')
+
 
     # initialize parent window
     window = tk.Tk(className='\DRO Test')
