@@ -11,7 +11,7 @@ class TwoAxisStage:
     def __init__(self, window, port, baud, startupfile):
         self.s = None
         self.window = window
-        self.pos = [0, 0]
+        self.pos = [0., 0.]
         self.rate = 1
         self.rowLen = 6
         self.colLen = 5
@@ -80,7 +80,7 @@ class TwoAxisStage:
 
         # gcode button
         self.gcode_send = tk.Button(master=self.window, text='Send',
-                                    command=lambda: self.sendCommand(self.gcode_entry.get() + '\n', resetarg=True,
+                                    command=lambda: self.sendCommand(self.gcode_entry.get().rstrip() + '\n', resetarg=True,
                                                                      entry=self.gcode_entry))
         self.gcode_send.grid(row=4, column=3, sticky='')
 
@@ -94,14 +94,14 @@ class TwoAxisStage:
 
         #self.initSerial(self.port, self.baud, self.startupfile)
         self.Refresh()
-        #self.getPos()
+
 
     def setKeybinds(self):
         self.window.bind('<KeyPress>', self.onKeyPress)
         # window.bind('<Return>', sendCommand(gcode_entry.get() + '\n', resetarg=True, entry=gcode_entry))
 
     def Refresh(self):
-        self.lbl_pos.configure(text='X: %1.3f, Y:%1.3f' % (self.pos[0], self.pos[1]))
+        self.lbl_pos.configure(text='X: %1.3f, Y:%1.3f' % (float(self.pos[0]), float(self.pos[1])))
         # print(time.perf_counter_ns(), pos)
         self.window.after(50, self.Refresh)
 
@@ -118,15 +118,15 @@ class TwoAxisStage:
 
     def incX(self, v):
         # increments the X counter by specified v, set by the rate
-        self.pos[0] += v
-        c = 'G91x' + str(v) + '\n'
+        # self.pos[0] += v
+        c = 'G91 x' + str(v) + '\n'
         self.sendCommand(c)
 
     def incY(self, v):
         # increments the Y counter by specified v, set by the rate
-        self.pos[1] += v
+        # self.pos[1] += v
         # increments the X counter by specified v, set by the rate
-        c = 'G91y' + str(v) + '\n'
+        c = 'G91 y' + str(v) + '\n'
         self.sendCommand(c)
 
     def switchRate(self, v):
@@ -140,18 +140,25 @@ class TwoAxisStage:
         print('> ' + out.strip().decode('UTF-8'))
 
     def sendCommand(self, gcode, resetarg=False, entry=None):
+        # check if it's a comment
+        if gcode != '' and gcode.strip()[0] == ';':
+            return
+
+        # check if it's a manual entry to clear entry box
         if resetarg and entry is not None:
             entry.delete(0, 'end')
-        print('Sent: ' + gcode.strip())
+
+        print('Sent: ' + gcode.rstrip())
 
         self.s.write(gcode.encode('UTF-8'))
         self.readOut()
+        self.setPos(gcode)
 
     def initSerial(self, port, baud, filename):
         try:
             self.s = serial.Serial(port, baud)
         except:
-            print('Bungled connection, try again.')
+            print('Borked connection, try again.')
         else:
             # Wake up grbl
             self.s.write(b"\r\n\r\n")
@@ -164,20 +171,104 @@ class TwoAxisStage:
                 for line in f:
                     # strip EOL chars
                     l = line.strip()
-                    self.sendCommand(l + '\n')
+                    self.sendCommand(l + '\r')
             print('Connected to GRBL')
 
-    def getPos(self):
-        self.s.write('$?'.encode('UTF-8'))
-        response = self.s.readline().decode('UTF-8')
-        print('pos:' + str(response))
-        self.window.after(2000, self.getPos)
+    def setPos(self, cmd):
+        # g91 iterates, not sets
+        if cmd[:3].lower() == 'g91':
+            for i in cmd.split(' '):
+                if i.lower()[0] == 'x':
+                    self.pos[0] += float(i[1:])
+                if i.lower()[0] == 'y':
+                    self.pos[1] += float(i[1:])
+        else:
+            for i in cmd.split(' '):
+                if i.lower()[0] == 'x':
+                    self.pos[0] = float(i[1:])
+                if i.lower()[0] == 'y':
+                    self.pos[1] = float(i[1:])
 
     def runFile(self, filename):
+        # queue with timing calculation for next move
         try:
             with open(filename, 'r') as f:
                 for line in f:
-                    l = line.strip()
-                    self.sendCommand(l + '\n')
+                    if line != '':
+                        l = line.strip()
+                        self.sendCommand(l + '\n')
+
         except FileNotFoundError:
-            print('File does not exist, try again')
+            self.file_entry.delete(0, 'end')
+            self.file_entry.insert(0, 'File does not exist')
+
+
+class BoundedQueue:
+    # Creates a new empty queue:
+    def __init__(self, capacity):
+        assert isinstance(capacity, int), (
+                    'Error: Type error: %s' % (type(capacity)))  # throws an assertion error on not true
+        assert capacity >= 0, ('Error: Illegal capacity: %d' % (capacity))
+        self.__items = []  # init the  list / queue as empty
+        self.__capacity = capacity
+
+    # Adds a new item to the back of the queue, and returns nothing:
+    def enqueue(self, item):
+        '''
+        Enqueue the element to the back of the queue
+        :param item: the element to be enqueued
+        :return: No returns
+        '''
+        if len(self.__items) >= self.__capacity:
+            raise Exception('Error: Queue is full')
+        else:
+            self.__items.append(item)
+
+    # Removes and returns the front-most item in the queue.
+    # Returns nothing if the queue is empty.
+    def dequeue(self):
+        '''
+        Dequeue the element from the front of the queue and return it
+        :return: The object that was dequeued
+        '''
+        if len(self.__items) <= 0:
+            raise Exception('Error: Queue is empty')
+        return self.__items.pop(0)
+
+    # Returns the front-most item in the queue, and DOES NOT change the queue.
+    def peek(self):
+        if len(self.__items) <= 0:
+            raise Exception('Error: Queue is empty')
+        return self.__items[0]
+
+    # Returns True if the queue is empty, and False otherwise:
+    def is_empty(self):
+        return len(self.__items) == 0
+
+    # Returns True if the queue is full, and False otherwise:
+    def is_full(self):
+        return len(self.__items) == self.__capacity
+
+    # Returns the number of items in the queue:
+    def size(self):
+        return len(self.__items)
+
+    # Returns the capacity of the queue:
+    def capacity(self):
+        return self.__capacity
+
+    # Removes all items from the queue, and sets the size to 0
+    # clear() should not change the capacity
+    def clear(self):
+        self.__items = []
+
+    # Returns a string representation of the queue:
+    def __str__(self):
+        str_exp = ""
+        for item in self.__items:
+            str_exp += (str(item) + ", ")
+        return str_exp
+
+    # Returns a string representation of the object bounded queue:
+    def __repr__(self):
+        return str(self) + " Max=" + str(self.__capacity)

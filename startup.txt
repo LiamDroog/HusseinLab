@@ -1,12 +1,26 @@
+; step pulse length (μs)
+$0=10
+; step idle delay (ms)
 $1=0
+; axis direction (2: x nominal, y reversed)
 $3=2
+; status report (1: report machine coords)
 $10=1
-#13=0
+; Feedback units (0: mm)
+$13=0
+; x steps/mm
 $100=400
+;y steps/mm
 $101=400
+; x max feedrate (mm/min)
 $110=1400
+; y max feedrate (mm/min)
 $111=1400
-$120=100
-$121=100
+; x max acceleration
+$120=50
+; y max acceleration
+$121=50
+; set units to mm, set absolute mode
 g21g90
-g92x0y0
+; set zeros
+g92 x0 y0
