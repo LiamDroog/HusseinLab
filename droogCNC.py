@@ -2,7 +2,7 @@ import tkinter as tk
 import tkinter.font as font
 import serial
 import time
-
+import numpy as np
 
 class TwoAxisStage:
     # todo queue implementaion for stopping stuff
@@ -12,13 +12,28 @@ class TwoAxisStage:
         self.s = None
         self.window = window
         self.pos = [0., 0.]
+        self.currentpos = 'X0 Y0'
         self.rate = 1
         self.rowLen = 6
         self.colLen = 5
         self.port = port
         self.baud = baud
         self.startupfile = startupfile
-
+        self.connected = False
+        self.queue = None
+        self.parameters = {
+            'stepPulseLength'   : [0, None],
+            'stepIdleDelay'     : [1, None],
+            'axisDirection'     : [3, None],
+            'statusReport'      : [10, None],
+            'feedbackUnits'     : [13, None],
+            'xSteps/mm'         : [100, None],
+            'ySteps/mm'         : [101, None],
+            'xMaxRate'          : [110, None],
+            'yMaxRate'          : [111, None],
+            'xMaxAcc'           : [120, None],
+            'yMaxAcc'           : [121, None],
+            }
         # draws all on-screen controls and assigns their event commands
         self.rowarr = list(i for i in range(self.rowLen))
         self.colarr = list(i for i in range(self.colLen))
@@ -27,24 +42,24 @@ class TwoAxisStage:
         self.window.columnconfigure(self.colLen, minsize=50, weight=1)
 
         # On screen control grid
-        self.btn_w = tk.Button(master=self.window, text="\u219F", command=lambda: self.incY(self.rate))
+        self.btn_w = tk.Button(master=self.window, text="\u219F", command=lambda: self.jogY(self.rate))
         self.btn_w['font'] = font.Font(size=18)
         self.btn_w.grid(row=1, column=2, sticky="nsew")
 
-        self.btn_a = tk.Button(master=self.window, text="\u219E", command=lambda: self.incX(-1 * self.rate))
+        self.btn_a = tk.Button(master=self.window, text="\u219E", command=lambda: self.jogX(-1 * self.rate))
         self.btn_a['font'] = font.Font(size=18)
         self.btn_a.grid(row=2, column=1, sticky="nsew")
 
-        self.btn_s = tk.Button(master=self.window, text="\u21A1", command=lambda: self.incY(-1 * self.rate))
+        self.btn_s = tk.Button(master=self.window, text="\u21A1", command=lambda: self.jogY(-1 * self.rate))
         self.btn_s['font'] = font.Font(size=18)
         self.btn_s.grid(row=2, column=2, sticky="nsew")
 
-        self.btn_d = tk.Button(master=self.window, text="\u21A0", command=lambda: self.incX(self.rate))
+        self.btn_d = tk.Button(master=self.window, text="\u21A0", command=lambda: self.jogX(self.rate))
         self.btn_d['font'] = font.Font(size=18)
         self.btn_d.grid(row=2, column=3, sticky="nsew")
 
         # serial connect button
-        self.connect_btn = tk.Button(master=self.window, text='connect',
+        self.connect_btn = tk.Button(master=self.window, text='connect', fg='red',
                                      command=lambda: self.initSerial(self.port, self.baud, self.startupfile))
         self.connect_btn.grid(row=1, column=5)
         # 10 button
@@ -89,16 +104,20 @@ class TwoAxisStage:
         self.file_entry.grid(row=5, columnspan=3, sticky='ew')
 
         # file input button
-        self.file_run = tk.Button(master=self.window, text='Run', command=lambda: self.runFile(self.file_entry.get()))
-        self.file_run.grid(row=5, column=3)
+        self.file_input = tk.Button(master=self.window, text='Get File', command=lambda: self.getFile(self.file_entry.get()))
+        self.file_input.grid(row=5, column=3)
 
-        #self.initSerial(self.port, self.baud, self.startupfile)
+        # file run button
+        self.file_run = tk.Button(master=self.window, text='Run', command=lambda: self.runFile())
+        self.file_run.grid(row=5, column=4)
+
+        self.kill_btn = tk.Button(master=self.window, text='Kill', command=self.killSwitch)
+        self.kill_btn.grid(row=5, column=5)
+
         self.Refresh()
-
 
     def setKeybinds(self):
         self.window.bind('<KeyPress>', self.onKeyPress)
-        # window.bind('<Return>', sendCommand(gcode_entry.get() + '\n', resetarg=True, entry=gcode_entry))
 
     def Refresh(self):
         self.lbl_pos.configure(text='X: %1.3f, Y:%1.3f' % (float(self.pos[0]), float(self.pos[1])))
@@ -108,24 +127,21 @@ class TwoAxisStage:
     def onKeyPress(self, event, wasd=False):
         if wasd:
             if event.char.lower() == 'w':
-                self.incY(self.rate)
+                self.jogY(self.rate)
             elif event.char.lower() == 'a':
-                self.incX(-1 * self.rate)
+                self.jogX(-1 * self.rate)
             elif event.char.lower() == 's':
-                self.incY(-1 * self.rate)
+                self.jogY(-1 * self.rate)
             elif event.char.lower() == 'd':
-                self.incX(self.rate)
+                self.jogX(self.rate)
 
-    def incX(self, v):
+    def jogX(self, v):
         # increments the X counter by specified v, set by the rate
-        # self.pos[0] += v
         c = 'G91 x' + str(v) + '\n'
         self.sendCommand(c)
 
-    def incY(self, v):
+    def jogY(self, v):
         # increments the Y counter by specified v, set by the rate
-        # self.pos[1] += v
-        # increments the X counter by specified v, set by the rate
         c = 'G91 y' + str(v) + '\n'
         self.sendCommand(c)
 
@@ -155,24 +171,35 @@ class TwoAxisStage:
         self.setPos(gcode)
 
     def initSerial(self, port, baud, filename):
-        try:
-            self.s = serial.Serial(port, baud)
-        except:
-            print('Borked connection, try again.')
+        if not self.connected:
+            try:
+                self.s = serial.Serial(port, baud)
+            except:
+                print('Borked connection, try again.')
+            else:
+                # Wake up grbl
+                self.s.write(b"\r\n\r\n")
+                # allow grbl to initialize
+                time.sleep(2)
+                # flush startup from serial
+                self.s.flushInput()
+                # open startup file
+                with open(filename, 'r') as f:
+                    for line in f:
+                        # strip EOL chars
+                        l = line.strip()
+                        self.sendCommand(l + '\r')
+                print('Connected to GRBL')
+                self.connect_btn.configure(fg='green', text='Connected')
+                self.connected = True
+                self.__parseParameters()
+
         else:
-            # Wake up grbl
-            self.s.write(b"\r\n\r\n")
-            # allow grbl to initialize
-            time.sleep(2)
-            # flush startup from serial
-            self.s.flushInput()
-            # open startup file
-            with open(filename, 'r') as f:
-                for line in f:
-                    # strip EOL chars
-                    l = line.strip()
-                    self.sendCommand(l + '\r')
-            print('Connected to GRBL')
+            self.s.close()
+            self.s = None
+            self.queue = None
+            print('Connection closed')
+            self.connect_btn.configure(fg='red', text='Connect')
 
     def setPos(self, cmd):
         # g91 iterates, not sets
@@ -189,40 +216,92 @@ class TwoAxisStage:
                 if i.lower()[0] == 'y':
                     self.pos[1] = float(i[1:])
 
-    def runFile(self, filename):
+    def getFile(self, filename):
         # queue with timing calculation for next move
+        # wipe queue
+        self.queue = None
         try:
-            with open(filename, 'r') as f:
-                for line in f:
-                    if line != '':
-                        l = line.strip()
-                        self.sendCommand(l + '\n')
-
+            f = open(filename, 'r')
+            self.queue = Queue()
+            for line in f:
+                if line != '' and line[0] != ';':
+                    self.queue.enqueue(line)
+            print('Loaded ' + filename)
         except FileNotFoundError:
             self.file_entry.delete(0, 'end')
             self.file_entry.insert(0, 'File does not exist')
 
+    def runFile(self):
+        nextpos = self.queue.dequeue()
+        self.sendCommand(nextpos)
+        if self.queue.size() > 0:
+            self.window.after(self.calcDelay(self.currentpos, nextpos), self.runFile)
+            self.currentpos = nextpos
+        else:
+            return
 
-class BoundedQueue:
+    def killSwitch(self):
+        self.queue.clear()
+        print('Current motion was killed')
+
+    def calcDelay(self, currentpos, nextpos):
+        #   todo: parse positions from gcode
+        #         parse feeds & speeds from startup file
+        #         calculate (approximate?) time delay until next step
+
+        ipos = self.__parsePosition(currentpos)
+        fpos = self.__parsePosition(nextpos)
+        assert len(ipos) == len(fpos), 'Input arrays must be same length'
+
+        v = float(self.parameters['xMaxRate'][1]) / 60
+        a = float(self.parameters['yMaxRate'][1])
+
+        delta = list(ipos[i] - fpos[i] for i in range(len(ipos)))
+        d = np.sqrt(sum(i ** 2 for i in delta))
+        deltaT = ((2 * v) / a) + ((d - (v ** 2 / a)) / v)
+        print('next move in ' + str(int(np.floor(deltaT * 1000))) + 'ms')
+        return int(np.floor(deltaT * 1000))    # in ms
+
+    def __parsePosition(self, ipos):
+        pos = [0, 0]
+        for i in ipos.split(' '):
+            if i.lower()[0] == 'x':
+                pos[0] = float(i[1:])
+            if i.lower()[0] == 'y':
+                pos[1] = float(i[1:])
+        return pos
+
+    def __parseParameters(self):
+        tmp = []
+        with open(self.startupfile, 'r') as f:
+            pv = list(self.parameters.values())
+            for line in f:
+                if line != '' and line[0] == '$':
+                    tmp.append(line.strip().strip('$'))
+        f.close()
+        for i in tmp:
+            for key, value in self.parameters.items():
+                if i.split('=')[0] == str(value[0]):
+                    print(key, i, value)
+                    self.parameters[key] = [i.split('=')[0], i.split('=')[1]]
+
+
+class Queue:
     # Creates a new empty queue:
-    def __init__(self, capacity):
-        assert isinstance(capacity, int), (
-                    'Error: Type error: %s' % (type(capacity)))  # throws an assertion error on not true
-        assert capacity >= 0, ('Error: Illegal capacity: %d' % (capacity))
+    def __init__(self):
         self.__items = []  # init the  list / queue as empty
-        self.__capacity = capacity
 
     # Adds a new item to the back of the queue, and returns nothing:
-    def enqueue(self, item):
+    def enqueue(self, item, idx=None):
         '''
         Enqueue the element to the back of the queue
         :param item: the element to be enqueued
         :return: No returns
         '''
-        if len(self.__items) >= self.__capacity:
-            raise Exception('Error: Queue is full')
-        else:
+        if idx is None:
             self.__items.append(item)
+        else:
+            self.__items.insert(idx, item)
 
     # Removes and returns the front-most item in the queue.
     # Returns nothing if the queue is empty.
@@ -245,17 +324,9 @@ class BoundedQueue:
     def is_empty(self):
         return len(self.__items) == 0
 
-    # Returns True if the queue is full, and False otherwise:
-    def is_full(self):
-        return len(self.__items) == self.__capacity
-
     # Returns the number of items in the queue:
     def size(self):
         return len(self.__items)
-
-    # Returns the capacity of the queue:
-    def capacity(self):
-        return self.__capacity
 
     # Removes all items from the queue, and sets the size to 0
     # clear() should not change the capacity
@@ -266,9 +337,5 @@ class BoundedQueue:
     def __str__(self):
         str_exp = ""
         for item in self.__items:
-            str_exp += (str(item) + ", ")
+            str_exp += (str(item))
         return str_exp
-
-    # Returns a string representation of the object bounded queue:
-    def __repr__(self):
-        return str(self) + " Max=" + str(self.__capacity)
