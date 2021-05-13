@@ -1,6 +1,4 @@
 import tkinter as tk
-import serial
-import time
 from droogCNC import TwoAxisStage
 
 

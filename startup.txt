@@ -1,9 +1,9 @@
 ; step pulse length (μs)
 $0=10
 ; step idle delay (ms)
-$1=50
+$1=100
 ; axis direction (2: x nominal, y reversed)
-$3=2
+$3=0
 ; status report (1: report machine coords)
 $10=1
 ; Feedback units (0: mm)

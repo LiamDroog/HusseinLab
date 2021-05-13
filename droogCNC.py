@@ -3,9 +3,10 @@ import tkinter.font as font
 import serial
 import time
 import numpy as np
+import os
+
 
 class TwoAxisStage:
-    # todo queue implementaion for stopping stuff
     # g92 after jog fails
 
     def __init__(self, window, port, baud, startupfile):
@@ -21,6 +22,8 @@ class TwoAxisStage:
         self.startupfile = startupfile
         self.connected = False
         self.queue = None
+        self.tempFile = None
+        self.temprunning = False
         self.parameters = {
             'stepPulseLength'   : [0, None],
             'stepIdleDelay'     : [1, None],
@@ -34,6 +37,7 @@ class TwoAxisStage:
             'xMaxAcc'           : [120, None],
             'yMaxAcc'           : [121, None],
             }
+
         # draws all on-screen controls and assigns their event commands
         self.rowarr = list(i for i in range(self.rowLen))
         self.colarr = list(i for i in range(self.colLen))
@@ -61,7 +65,7 @@ class TwoAxisStage:
         # serial connect button
         self.connect_btn = tk.Button(master=self.window, text='connect', fg='red',
                                      command=lambda: self.initSerial(self.port, self.baud, self.startupfile))
-        self.connect_btn.grid(row=1, column=5)
+        self.connect_btn.grid(row=1, column=5, sticky='nsew')
         # 10 button
         self.btn_jog = tk.Button(master=self.window, text='10', command=lambda: self.switchRate(10))
         self.btn_jog.grid(row=3, column=0, sticky='nsew')
@@ -114,17 +118,40 @@ class TwoAxisStage:
         self.kill_btn = tk.Button(master=self.window, text='Kill', command=self.killSwitch)
         self.kill_btn.grid(row=5, column=5)
 
+        # go home button
+        self.home_btn = tk.Button(master=self.window, text='go\nhome', command=lambda: self.sendCommand('G90 X0 Y0'))
+        self.home_btn.grid(row=2, column=4, sticky='nsew')
+
+        # set home button
+        self.set_home = tk.Button(master=self.window, text='set\nhome', command=lambda: self.sendCommand('G92 X0 Y0'))
+        self.set_home.grid(row=1, column=4, sticky='nsew')
+
+        self.__setTempFile()
+        print('set temp file, temprunning = ', self.temprunning)
         self.Refresh()
 
     def setKeybinds(self):
+        """
+        binds keypress event to the onKeyPress function
+        :return: None
+        """
         self.window.bind('<KeyPress>', self.onKeyPress)
 
     def Refresh(self):
+        """
+        Sets recurring event to update GUI every 50ms
+        :return: None
+        """
         self.lbl_pos.configure(text='X: %1.3f, Y:%1.3f' % (float(self.pos[0]), float(self.pos[1])))
-        # print(time.perf_counter_ns(), pos)
         self.window.after(50, self.Refresh)
 
     def onKeyPress(self, event, wasd=False):
+        """
+        Allows for stage control via WASD - Not sure if keeping implementation
+        :param event: onKeyPress event
+        :param wasd: if True, wasd controls the stage
+        :return: None
+        """
         if wasd:
             if event.char.lower() == 'w':
                 self.jogY(self.rate)
@@ -136,41 +163,75 @@ class TwoAxisStage:
                 self.jogX(self.rate)
 
     def jogX(self, v):
+        """
+        Jogs the stage by the specified rate within the GUI
+        :param v: float rate
+        :return: None
+        """
         # increments the X counter by specified v, set by the rate
         c = 'G91 x' + str(v) + '\n'
         self.sendCommand(c)
 
     def jogY(self, v):
+        """
+        Jogs the stage by the specified rate within the GUI
+        :param v: float rate
+        :return: None
+        """
         # increments the Y counter by specified v, set by the rate
         c = 'G91 y' + str(v) + '\n'
         self.sendCommand(c)
 
     def switchRate(self, v):
+        """
+        Switches current jog rate to specified input
+        :param v: float jog rate
+        :return:
+        """
         # used to switch the rate's order of magnitude corresponding to pressed button
         self.rate = v
 
     def readOut(self):
+        """
+        Reads out the reply from GRBL
+        :return: None
+        """
         # todo: Fix borked DRO feedback
         # implement own method?
         out = self.s.readline()  # Wait for grbl response with carriage return
         print('> ' + out.strip().decode('UTF-8'))
 
     def sendCommand(self, gcode, resetarg=False, entry=None):
+        """
+        Sends command to GRBL. Checks if it is a comment, then sends command and updates DRO position accordingly
+        :param gcode: command to be sent
+        :param resetarg: used to detect if a command was sent via the input box so it knows to clear it
+        :param entry: entry box instance to clear
+        :return: None
+        """
         # check if it's a comment
-        if gcode != '' and gcode.strip()[0] == ';':
-            return
+        if self.s:
+            if gcode.strip() == '' or gcode.strip()[0] == ';':
+                return
 
-        # check if it's a manual entry to clear entry box
-        if resetarg and entry is not None:
-            entry.delete(0, 'end')
+            # check if it's a manual entry to clear entry box
+            if resetarg and entry is not None:
+                entry.delete(0, 'end')
 
-        print('Sent: ' + gcode.rstrip())
-
-        self.s.write(gcode.encode('UTF-8'))
-        self.readOut()
-        self.setPos(gcode)
+            print('Sent: ' + gcode.rstrip())
+            gcode = gcode.rstrip() + '\n'
+            self.s.write(gcode.encode('UTF-8'))
+            self.readOut()
+            self.setPos(gcode)
 
     def initSerial(self, port, baud, filename):
+        """
+        Initalizes serial connection with grbl doohickey. Parses all startup commands from a text file input
+        :param port: USB port board is plugged into
+        :param baud: communication baud rate
+        :param filename: startup filename containing startup grbl code
+        :return: None
+        """
         if not self.connected:
             try:
                 self.s = serial.Serial(port, baud)
@@ -202,6 +263,11 @@ class TwoAxisStage:
             self.connect_btn.configure(fg='red', text='Connect')
 
     def setPos(self, cmd):
+        """
+        sets position of table on DRO
+        :param cmd: gcode command containing new location
+        :return: None
+        """
         # g91 iterates, not sets
         if cmd[:3].lower() == 'g91':
             for i in cmd.split(' '):
@@ -217,6 +283,12 @@ class TwoAxisStage:
                     self.pos[1] = float(i[1:])
 
     def getFile(self, filename):
+        """
+        Opens file containing gcode. Does not parse for correctness.
+        Inputs all non blank lines / comments into a queue for usage
+        :param filename: File to open
+        :return: None
+        """
         # queue with timing calculation for next move
         # wipe queue
         self.queue = None
@@ -232,22 +304,56 @@ class TwoAxisStage:
             self.file_entry.insert(0, 'File does not exist')
 
     def runFile(self):
+        """
+        Used to run a file obained with getFile()
+        :return: None
+        """
+        if not self.temprunning:
+            print('calling savetemp')
+            self.temprunning = True
+            self.__saveTempData()
+
         nextpos = self.queue.dequeue()
         self.sendCommand(nextpos)
+
         if self.queue.size() > 0:
             self.window.after(self.calcDelay(self.currentpos, nextpos), self.runFile)
             self.currentpos = nextpos
+
+        elif self.queue.size() == 0:
+            self.window.after(self.calcDelay(self.currentpos, nextpos), self.finishRun)
+
         else:
+            self.temprunning = False
             return
 
+    def finishRun(self):
+        """
+        Runs after file completion, removes contingency file since it is not needed.
+        :return: None
+        """
+        print('File run complete')
+        self.__removeTempFile()
+
     def killSwitch(self):
+        """
+        effectively kills current gcode run by clearing queue. Note this isn't instantaneous
+        :return: None
+        """
         self.queue.clear()
         print('Current motion was killed')
 
     def calcDelay(self, currentpos, nextpos):
+        """
+        Calculates a lower end of the required delay between moved for the queue command system
+        :param currentpos: Current position
+        :param nextpos: Next position
+        :return: time delay in ms
+        """
         #   todo: parse positions from gcode
         #         parse feeds & speeds from startup file
         #         calculate (approximate?) time delay until next step
+        #         circular motion
 
         ipos = self.__parsePosition(currentpos)
         fpos = self.__parsePosition(nextpos)
@@ -263,6 +369,11 @@ class TwoAxisStage:
         return int(np.floor(deltaT * 1000))    # in ms
 
     def __parsePosition(self, ipos):
+        """
+        Parses position for use with DRO
+        :param ipos: input position
+        :return: [x, y] list of current position
+        """
         pos = [0, 0]
         for i in ipos.split(' '):
             if i.lower()[0] == 'x':
@@ -272,6 +383,10 @@ class TwoAxisStage:
         return pos
 
     def __parseParameters(self):
+        """
+        Parses parameters from a given input file into the parameters dictionary for usage
+        :return: None
+        """
         tmp = []
         with open(self.startupfile, 'r') as f:
             pv = list(self.parameters.values())
@@ -284,6 +399,40 @@ class TwoAxisStage:
                 if i.split('=')[0] == str(value[0]):
                     print(key, i, value)
                     self.parameters[key] = [i.split('=')[0], i.split('=')[1]]
+
+    def __setTempFile(self):
+        """
+        Sets the temporary file name, unless it exists
+        :return: None
+        """
+        if os.path.exists('temp.npy') or self.tempFile is not None:
+            print('Temp file exists, load data?')
+        else:
+            self.tempFile = 'temp.npy'
+
+    def __saveTempData(self):
+        """
+        Saves temp data to temp file, if program is currently running it calls itself every 1000ms
+        :return: None
+        """
+        if self.temprunning:
+            if self.queue.size() > 0:
+                np.save(self.tempFile, [self.queue.peek(), time.asctime()])
+                self.window.after(1000, self.__saveTempData)
+                return True
+        else:
+            return False
+
+    def __retrieveTempData(self):
+        pass
+
+    def __removeTempFile(self):
+        """
+        removes temp file at end of program run
+        :return:
+        """
+        os.remove(self.tempFile)
+        self.tempFile = None
 
 
 class Queue:
@@ -298,6 +447,8 @@ class Queue:
         :param item: the element to be enqueued
         :return: No returns
         '''
+        if item.strip() == '':
+            return
         if idx is None:
             self.__items.append(item)
         else:
@@ -337,5 +488,5 @@ class Queue:
     def __str__(self):
         str_exp = ""
         for item in self.__items:
-            str_exp += (str(item))
+            str_exp += ('> ' +str(item))
         return str_exp
