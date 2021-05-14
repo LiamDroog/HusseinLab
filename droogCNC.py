@@ -4,6 +4,7 @@ import serial
 import time
 import numpy as np
 import os
+import h5py
 
 
 class TwoAxisStage:
@@ -24,6 +25,7 @@ class TwoAxisStage:
         self.queue = None
         self.tempFile = None
         self.temprunning = False
+        self.filename = None
         self.parameters = {
             'stepPulseLength'   : [0, None],
             'stepIdleDelay'     : [1, None],
@@ -37,6 +39,10 @@ class TwoAxisStage:
             'xMaxAcc'           : [120, None],
             'yMaxAcc'           : [121, None],
             }
+
+        self.param_number = 2
+        self.datafilename = str('-'.join(list(i.replace(':', '-') for i in time.asctime().split(' '))))+'hdf5'
+        self.datafile = HDF5File(self.datafilename, 'run1', self.param_number)
 
         # draws all on-screen controls and assigns their event commands
         self.rowarr = list(i for i in range(self.rowLen))
@@ -66,9 +72,11 @@ class TwoAxisStage:
         self.connect_btn = tk.Button(master=self.window, text='connect', fg='red',
                                      command=lambda: self.initSerial(self.port, self.baud, self.startupfile))
         self.connect_btn.grid(row=1, column=5, sticky='nsew')
+
         # 10 button
-        self.btn_jog = tk.Button(master=self.window, text='10', command=lambda: self.switchRate(10))
-        self.btn_jog.grid(row=3, column=0, sticky='nsew')
+        self.btn_10 = tk.Button(master=self.window, text='10', command=lambda: self.switchRate(10))
+        self.btn_10.grid(row=3, column=0, sticky='nsew')
+        self.btn_10.configure(width=15, height=5)
 
         # 1 button
         self.btn_1 = tk.Button(master=self.window, text='1', command=lambda: self.switchRate(1))
@@ -90,7 +98,7 @@ class TwoAxisStage:
         self.lbl_pos = tk.Label(master=self.lbl_frame, text='X: %1.3f, Y:%1.3f' % (self.pos[0], self.pos[1]))
         self.lbl_pos['font'] = font.Font(size=15)
 
-        self.lbl_frame.grid(row=0, column=0, columnspan=self.colLen, sticky='')
+        self.lbl_frame.grid(row=0, column=0, columnspan=self.colLen+1, sticky='')
         self.lbl_pos.pack()
 
         # gcode input box
@@ -118,6 +126,11 @@ class TwoAxisStage:
         self.kill_btn = tk.Button(master=self.window, text='Kill', command=self.killSwitch)
         self.kill_btn.grid(row=5, column=5)
 
+        self.increment_btn = tk.Button(master=self.window, text='G91', command=self.setG91)
+        self.increment_btn.grid(row=1, column=1, sticky='nsew')
+
+        self.absolute_btn = tk.Button(master=self.window, text='G90', command=self.setG90)
+        self.absolute_btn.grid(row=1, column=3, sticky='nsew')
         # go home button
         self.home_btn = tk.Button(master=self.window, text='go\nhome', command=lambda: self.sendCommand('G90 X0 Y0'))
         self.home_btn.grid(row=2, column=4, sticky='nsew')
@@ -126,8 +139,11 @@ class TwoAxisStage:
         self.set_home = tk.Button(master=self.window, text='set\nhome', command=lambda: self.sendCommand('G92 X0 Y0'))
         self.set_home.grid(row=1, column=4, sticky='nsew')
 
+        self.start_from_death_btn = tk.Button(master=self.window, text='No temp\nfile found', command=self.__startFromDeath)
+        self.start_from_death_btn.grid(row=2, column=5, sticky='nesw')
+        self.start_from_death_btn['font'] = font.Font(size=8)
+
         self.__setTempFile()
-        print('set temp file, temprunning = ', self.temprunning)
         self.Refresh()
 
     def setKeybinds(self):
@@ -218,10 +234,15 @@ class TwoAxisStage:
             if resetarg and entry is not None:
                 entry.delete(0, 'end')
 
+            if 'g90' in gcode.rstrip().lower().split(' '):
+                self.setG90(cmd=False)
+            if 'g91' in gcode.rstrip().lower().split(' '):
+                self.setG91(cmd=False)
             print('Sent: ' + gcode.rstrip())
             gcode = gcode.rstrip() + '\n'
             self.s.write(gcode.encode('UTF-8'))
             self.readOut()
+            self.__writeData([time.asctime(), gcode.rstrip()])
             self.setPos(gcode)
 
     def initSerial(self, port, baud, filename):
@@ -262,6 +283,18 @@ class TwoAxisStage:
             print('Connection closed')
             self.connect_btn.configure(fg='red', text='Connect')
 
+    def setG91(self, cmd=True):
+        if cmd:
+            self.sendCommand('G91')
+        self.increment_btn.configure(fg='green')
+        self.absolute_btn.configure(fg='black')
+
+    def setG90(self, cmd=True):
+        if cmd:
+            self.sendCommand('G90')
+        self.increment_btn.configure(fg='black')
+        self.absolute_btn.configure(fg='green')
+
     def setPos(self, cmd):
         """
         sets position of table on DRO
@@ -293,6 +326,7 @@ class TwoAxisStage:
         # wipe queue
         self.queue = None
         try:
+            self.filename = filename
             f = open(filename, 'r')
             self.queue = Queue()
             for line in f:
@@ -389,7 +423,6 @@ class TwoAxisStage:
         """
         tmp = []
         with open(self.startupfile, 'r') as f:
-            pv = list(self.parameters.values())
             for line in f:
                 if line != '' and line[0] == '$':
                     tmp.append(line.strip().strip('$'))
@@ -397,7 +430,6 @@ class TwoAxisStage:
         for i in tmp:
             for key, value in self.parameters.items():
                 if i.split('=')[0] == str(value[0]):
-                    print(key, i, value)
                     self.parameters[key] = [i.split('=')[0], i.split('=')[1]]
 
     def __setTempFile(self):
@@ -406,7 +438,8 @@ class TwoAxisStage:
         :return: None
         """
         if os.path.exists('temp.npy') or self.tempFile is not None:
-            print('Temp file exists, load data?')
+            self.start_from_death_btn.configure(text='Load Data?', fg='red')
+            self.__blinkButton(self.start_from_death_btn, 'red', 'blue', 1000)
         else:
             self.tempFile = 'temp.npy'
 
@@ -417,14 +450,36 @@ class TwoAxisStage:
         """
         if self.temprunning:
             if self.queue.size() > 0:
-                np.save(self.tempFile, [self.queue.peek(), time.asctime()])
+                np.save(self.tempFile, [self.queue.peek(), time.asctime(), self.filename])
                 self.window.after(1000, self.__saveTempData)
                 return True
         else:
             return False
 
     def __retrieveTempData(self):
-        pass
+        self.tempFile = 'temp.npy'
+        currentline, t, self.filename = np.load(self.tempFile)
+        print(currentline, t, self.filename)
+        return currentline
+
+    def __startFromDeath(self):
+        self.queue = None
+        currentline = self.__retrieveTempData()
+        try:
+            f = open(self.filename, 'r')
+            self.queue = Queue()
+            positionFound = False
+            for line in f:
+                if line == currentline:
+                    positionFound = True
+                if positionFound:
+                    if line != '' and line[0] != ';':
+                        self.queue.enqueue(line)
+            print('Loaded ' + self.filename)
+            self.start_from_death_btn.configure(text='Start?', fg='green', command=self.runFile)
+        except FileNotFoundError:
+            self.file_entry.delete(0, 'end')
+            self.file_entry.insert(0, 'File does not exist')
 
     def __removeTempFile(self):
         """
@@ -434,6 +489,18 @@ class TwoAxisStage:
         os.remove(self.tempFile)
         self.tempFile = None
 
+    def __blinkButton(self, button, c1, c2, delay):
+        if button['text'] == 'Start?':
+            return
+        else:
+            if button['fg'] == c1:
+                button.configure(fg=c2)
+            else:
+                button.configure(fg=c1)
+            self.window.after(delay, lambda: self.__blinkButton(button, c1, c2, delay))
+
+    def __writeData(self, data):
+        self.datafile.append(data)
 
 class Queue:
     # Creates a new empty queue:
@@ -490,3 +557,44 @@ class Queue:
         for item in self.__items:
             str_exp += ('> ' +str(item))
         return str_exp
+
+
+class HDF5File:
+    """
+    Simple class to append value to a hdf5 file on disc (usefull for building keras datasets)
+
+    Params:
+        datapath: filepath of h5 file
+        dataset: dataset name within the file
+        shape: dataset shape (not counting main/batch axis)
+        dtype: numpy dtype
+
+    Usage:
+        hdf5_store = HDF5Store('/tmp/hdf5_store.h5','X', shape=(20,20,3))
+        x = np.random.random(hdf5_store.shape)
+        hdf5_store.append(x)
+        hdf5_store.append(x)
+
+    From https://gist.github.com/wassname/a0a75f133831eed1113d052c67cf8633
+    """
+
+    def __init__(self, datapath, dataset, paramnum):
+        self.datapath = datapath
+        self.dataset = dataset
+        self.shape = (paramnum,)
+        self.i = 0
+
+        with h5py.File(self.datapath, mode='w') as h5f:
+            self.dset = h5f.create_dataset(
+                dataset,
+                shape=(0,) + self.shape,
+                maxshape=(None,) + self.shape)
+
+    def append(self, values):
+        # different datatypes (ie float, int, string) playing nice together
+        with h5py.File(self.datapath, mode='a') as h5f:
+            dset = h5f[self.dataset]
+            dset.resize((self.i + 1,) + self.shape)
+            dset[self.i] = [values]
+            self.i += 1
+            h5f.flush()
