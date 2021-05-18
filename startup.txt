@@ -9,9 +9,9 @@ $10=1
 ; Feedback units (0: mm)
 $13=0
 ; x steps/mm
-$100=400
+$100=404
 ;y steps/mm
-$101=400
+$101=404
 ; x max feedrate (mm/min)
 $110=1400
 ; y max feedrate (mm/min)
@@ -21,6 +21,6 @@ $120=130
 ; y max acceleration
 $121=130
 ; set units to mm, set absolute mode
-g21g90
+g21 g90
 ; set zeros
 g92 x0 y0

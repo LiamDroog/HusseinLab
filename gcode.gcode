@@ -1,5 +1,5 @@
-g21g90
-g92x0y0
+G21 G90
+g92 x0 y0
 G01F1400
 ; this is a comment
 X10 Y10

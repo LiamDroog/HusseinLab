@@ -1,3 +1,7 @@
+"""
+@author Liam Droog
+"""
+
 import tkinter as tk
 import tkinter.font as font
 import serial
@@ -41,8 +45,9 @@ class TwoAxisStage:
             }
 
         self.param_number = 2
-        self.datafilename = str('-'.join(list(i.replace(':', '-') for i in time.asctime().split(' '))))+'hdf5'
-        self.datafile = HDF5File(self.datafilename, 'run1', self.param_number)
+
+        #self.datafilename = str('-'.join(list(i.replace(':', '-') for i in time.asctime().split(' '))))+'.hdf5'
+        #self.datafile = HDF5File(self.datafilename, 'run1', self.param_number)
 
         # draws all on-screen controls and assigns their event commands
         self.rowarr = list(i for i in range(self.rowLen))
@@ -242,7 +247,7 @@ class TwoAxisStage:
             gcode = gcode.rstrip() + '\n'
             self.s.write(gcode.encode('UTF-8'))
             self.readOut()
-            self.__writeData([time.asctime(), gcode.rstrip()])
+            #self.__writeData([time.time_ns(), gcode.rstrip()])
             self.setPos(gcode)
 
     def initSerial(self, port, baud, filename):
@@ -501,6 +506,7 @@ class TwoAxisStage:
 
     def __writeData(self, data):
         self.datafile.append(data)
+
 
 class Queue:
     # Creates a new empty queue:
