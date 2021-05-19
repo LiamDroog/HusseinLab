@@ -9,9 +9,9 @@ $10=1
 ; Feedback units (0: mm)
 $13=0
 ; x steps/mm
-$100=409.41
+$100=401
 ;y steps/mm
-$101=409.41
+$101=401
 ; x max feedrate (mm/min)
 $110=1400
 ; y max feedrate (mm/min)

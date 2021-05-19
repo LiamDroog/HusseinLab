@@ -12,7 +12,6 @@ import h5py
 
 
 class TwoAxisStage:
-    # g92 after jog fails
 
     def __init__(self, window, port, baud, startupfile):
         self.s = None
@@ -33,6 +32,7 @@ class TwoAxisStage:
         self.buttonx = 6
         self.buttony = 3
         self.feedrate = 0
+        self.shotnum = 0    # TODO record me in the temp file and recall
         self.dro_text = 'X: %1.3f, Y:%1.3f, Feedrate: %d' % (self.pos[0], self.pos[1], self.feedrate)
         self.parameters = {
             'stepPulseLength'   : [0, None],
@@ -51,7 +51,7 @@ class TwoAxisStage:
         self.param_number = 2
 
         #self.datafilename = str('-'.join(list(i.replace(':', '-') for i in time.asctime().split(' '))))+'.hdf5'
-        #self.datafile = HDF5File(self.datafilename, 'run1', self.param_number)
+        #self.datafile = HDF5File(self.datafilename, 'shot' + str(self.shotnum), self.param_number)
 
         # draws all on-screen controls and assigns their event commands
         self.rowarr = list(i for i in range(self.rowLen))
@@ -203,7 +203,7 @@ class TwoAxisStage:
 
     def jogX(self, v):
         """
-        Jogs the stage by the specified rate within the GUI
+        Jogs the X stage by the specified rate within the GUI
         :param v: float rate
         :return: None
         """
@@ -213,7 +213,7 @@ class TwoAxisStage:
 
     def jogY(self, v):
         """
-        Jogs the stage by the specified rate within the GUI
+        Jogs the Y stage by the specified rate within the GUI
         :param v: float rate
         :return: None
         """
@@ -311,6 +311,11 @@ class TwoAxisStage:
             self.connect_btn.configure(fg='red', text='Connect')
 
     def setG91(self, cmd=True):
+        """
+        Sets relative movements active
+        :param cmd: If true, send the G91 command, regardless, switch button text color to match
+        :return: None
+        """
         if self.s:
             if cmd:
                 self.sendCommand('G91')
@@ -318,6 +323,11 @@ class TwoAxisStage:
             self.absolute_btn.configure(fg='black')
 
     def setG90(self, cmd=True):
+        """
+        Sets absolute movements active
+        :param cmd: If true, send the G90 command, regardless, switch button text color to match
+        :return: None
+        """
         if self.s:
             if cmd:
                 self.sendCommand('G90')
@@ -490,12 +500,23 @@ class TwoAxisStage:
             return False
 
     def __retrieveTempData(self):
+        """
+        Retrieves temp data from temp.npy if it exists and user calls it. Needs to be updated
+        to reflect final changes in temp data stored once integrated into laser system
+        :return: Last line that runfile stored before unexpected power loss
+        """
         self.tempFile = 'temp.npy'
         currentline, t, self.filename = np.load(self.tempFile)
         print(currentline, t, self.filename)
         return currentline
 
     def __startFromDeath(self):
+        """
+        Starts from an unexpected power loss. Retreives last known position from temp file.
+        Issues: Target stage *could* be manually moved on us prior to reviving. User initiative to ensure
+        nothing moves.
+        :return: None
+        """
         if self.s:
             self.queue = None
             currentline = self.__retrieveTempData()
@@ -517,15 +538,26 @@ class TwoAxisStage:
         else:
             self.start_from_death_btn.configure(text='Not\nconnected')
             self.window.after(5000, lambda: self.start_from_death_btn.configure(text='Load\nData?'))
+
+
     def __removeTempFile(self):
         """
         removes temp file at end of program run
-        :return:
+        :return: None
         """
         os.remove(self.tempFile)
         self.tempFile = None
 
     def __blinkButton(self, button, c1, c2, delay):
+        """
+        Blinks a button between two colors, c1 and c2. Has logic for specific buttons to cease switching given a
+        specific string as the text.
+        :param button: target button instance
+        :param c1: First color to switch to, string
+        :param c2: Second color to switch to, string
+        :param delay: Delay in ms
+        :return: None
+        """
         if button['text'] == 'Start?':
             return
         else:
@@ -536,9 +568,19 @@ class TwoAxisStage:
             self.window.after(delay, lambda: self.__blinkButton(button, c1, c2, delay))
 
     def __writeData(self, data):
+        """
+        Writes data to the class instances datafile
+        :param data: Data to write
+        :return: None
+        """
         self.datafile.append(data)
 
     def __setFeed(self, feedrate):
+        """
+        Sets feedrate based on input
+        :param feedrate: New feedrate in mm/min
+        :return: None
+        """
         self.feedrate = feedrate
 
 
@@ -549,11 +591,11 @@ class Queue:
 
     # Adds a new item to the back of the queue, and returns nothing:
     def enqueue(self, item, idx=None):
-        '''
+        """
         Enqueue the element to the back of the queue
         :param item: the element to be enqueued
         :return: No returns
-        '''
+        """
         if item.strip() == '':
             return
         if idx is None:
@@ -564,40 +606,100 @@ class Queue:
     # Removes and returns the front-most item in the queue.
     # Returns nothing if the queue is empty.
     def dequeue(self):
-        '''
+        """
         Dequeue the element from the front of the queue and return it
         :return: The object that was dequeued
-        '''
+        """
         if len(self.__items) <= 0:
             raise Exception('Error: Queue is empty')
         return self.__items.pop(0)
 
-    # Returns the front-most item in the queue, and DOES NOT change the queue.
     def peek(self):
+        """
+        Returns the front-most item in the queue, and DOES NOT change the queue.
+        :return: front-most item in the queue
+        """
         if len(self.__items) <= 0:
             raise Exception('Error: Queue is empty')
         return self.__items[0]
 
-    # Returns True if the queue is empty, and False otherwise:
     def is_empty(self):
+        """
+        :return: True if the queue is empty, and False otherwise
+        """
         return len(self.__items) == 0
 
-    # Returns the number of items in the queue:
     def size(self):
+        """
+        :return: The number of items in the queue
+        """
         return len(self.__items)
 
-    # Removes all items from the queue, and sets the size to 0
-    # clear() should not change the capacity
+    #
     def clear(self):
+        """
+        Removes all items from the queue
+        :return: None
+        """
         self.__items = []
 
     # Returns a string representation of the queue:
     def __str__(self):
+        """
+        :return: String representation of the queue
+        """
         str_exp = ""
         for item in self.__items:
             str_exp += ('> ' +str(item))
         return str_exp
 
+
+# class HDF5File:
+#     """
+#     Simple class to append value to a hdf5 file on disc (usefull for building keras datasets)
+#
+#     Params:
+#         datapath: filepath of h5 file
+#         dataset: dataset name within the file
+#         shape: dataset shape (not counting main/batch axis)
+#         dtype: numpy dtype
+#
+#     Usage:
+#         hdf5_store = HDF5Store('/tmp/hdf5_store.h5','X', shape=(20,20,3))
+#         x = np.random.random(hdf5_store.shape)
+#         hdf5_store.append(x)
+#         hdf5_store.append(x)
+#
+#     From https://gist.github.com/wassname/a0a75f133831eed1113d052c67cf8633
+#     """
+#
+#     def __init__(self, datapath, dataset, paramnum, compression='gzip'):
+#         self.datapath = datapath
+#         self.dataset = dataset
+#         #self.shape = (paramnum,)
+#         self.shape = paramnum
+#         self.i = 0
+#
+#         with h5py.File(self.datapath, mode='a') as h5f:
+#             self.dset = h5f.create_dataset(
+#                 dataset,
+#                 shape=(0,) + self.shape,
+#                 maxshape=(None,) + self.shape,
+#                 compression=compression)
+#
+#     def append(self, values):
+#         # different datatypes (ie float, int, string) playing nice together
+#         with h5py.File(self.datapath, mode='a') as h5f:
+#             dset = h5f[self.dataset]
+#             dset.resize((self.i + 1,) + self.shape)
+#             dset[self.i] = [values]
+#             self.i += 1
+#             h5f.flush()
+#
+#     def setMetadata(self, attribute, value):
+#         with h5py.File(self.datapath, mode='a') as h5f:
+#             h5f.attrs[attribute] = value
+#     def createDataset(self, group, dataset, size, compression):
 
 class HDF5File:
     """
@@ -615,26 +717,34 @@ class HDF5File:
         hdf5_store.append(x)
         hdf5_store.append(x)
 
-    From https://gist.github.com/wassname/a0a75f133831eed1113d052c67cf8633
+    Adapted From https://gist.github.com/wassname/a0a75f133831eed1113d052c67cf8633
     """
 
-    def __init__(self, datapath, dataset, paramnum):
+    def __init__(self, datapath):
         self.datapath = datapath
-        self.dataset = dataset
-        self.shape = (paramnum,)
-        self.i = 0
 
-        with h5py.File(self.datapath, mode='w') as h5f:
-            self.dset = h5f.create_dataset(
-                dataset,
-                shape=(0,) + self.shape,
-                maxshape=(None,) + self.shape)
-
-    def append(self, values):
+    def append(self, group, dataset, values):
         # different datatypes (ie float, int, string) playing nice together
         with h5py.File(self.datapath, mode='a') as h5f:
-            dset = h5f[self.dataset]
-            dset.resize((self.i + 1,) + self.shape)
-            dset[self.i] = [values]
-            self.i += 1
+            i = 0
+            dset = h5f[group][dataset]
+            dset.resize((i + 1,) + values.shape)
+            dset[i] = [values]
+            i += 1
             h5f.flush()
+
+    def setMetadata(self, attribute, value):
+        with h5py.File(self.datapath, mode='a') as h5f:
+            h5f.attrs[attribute] = value
+
+    def createDataset(self, group, dataset, shape, compression='gzip'):
+        with h5py.File(self.datapath, mode='a') as h5f:
+            h5f[group].create_dataset(
+                dataset,
+                shape=(0,) + shape,
+                maxshape=(None,) + shape,
+                compression=compression)
+
+    def createGroup(self, name):
+        with h5py.File(self.datapath, mode='a') as h5f:
+            h5f.create_group(name)
