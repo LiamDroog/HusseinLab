@@ -1,7 +1,7 @@
 ; step pulse length (μs)
 $0=10
 ; step idle delay (ms)
-$1=100
+$1=150
 ; axis direction (2: x nominal, y reversed)
 $3=0
 ; status report (1: report machine coords)
@@ -9,9 +9,9 @@ $10=1
 ; Feedback units (0: mm)
 $13=0
 ; x steps/mm
-$100=404
+$100=409.41
 ;y steps/mm
-$101=404
+$101=409.41
 ; x max feedrate (mm/min)
 $110=1400
 ; y max feedrate (mm/min)
