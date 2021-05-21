@@ -19,6 +19,7 @@ class TwoAxisStage:
         self.pos = [0., 0.]
         self.currentpos = 'X0 Y0'
         self.rate = 1
+        self.grid = [5, 9]
         self.rowLen = 5
         self.colLen = 9
         self.port = port
@@ -33,7 +34,6 @@ class TwoAxisStage:
         self.buttony = 6
         self.feedrate = 0
         self.shotnum = 0
-        #self.dro_text = 'X: %1.3f, Y:%1.3f, Feedrate: %d' % (self.pos[0], self.pos[1], self.feedrate)
         self.datafile = None
         self.datafilename = None
         self.parameters = {
@@ -53,8 +53,8 @@ class TwoAxisStage:
         self.param_number = 2  ###########
 
         # draws all on-screen controls and assigns their event commands
-        self.rowarr = list(i for i in range(self.rowLen))
-        self.colarr = list(i for i in range(self.colLen))
+        self.rowarr = list(i for i in range(self.grid[0]))
+        self.colarr = list(i for i in range(self.grid[1]))
 
         self.window.rowconfigure(self.rowarr, minsize=50, weight=1)
         self.window.columnconfigure(self.colLen, minsize=50, weight=1)
@@ -171,8 +171,8 @@ class TwoAxisStage:
         self.start_from_death_btn['font'] = font.Font(size=10)
         self.start_from_death_btn.configure(width=self.buttonx, height=self.buttony)
 
-        self.output = tk.Label(master=window, height=19, width=3*self.buttonx, anchor=tk.SW, justify=tk.LEFT)
-        self.output.grid(columnspan=4, rowspan=4, row=1, column=6, sticky='new')
+        self.output = tk.Listbox(master=self.window)
+        self.output.grid(columnspan=4, rowspan=self.grid[1]-6, row=1, column=6, sticky='nsew')
         self.output.configure(bg='white')
         self.window.bind('<Return>', (lambda x: self.sendCommand(self.gcode_entry.get(), entry=self.gcode_entry,
                                                                  resetarg=True)))
@@ -252,7 +252,9 @@ class TwoAxisStage:
         # implement own method?
         out = self.s.readline()  # Wait for grbl response with carriage return
         #print('> ' + out.strip().decode('UTF-8'))
-        self.output['text'] += '\n>' + out.decode('UTF-8').strip()
+        #self.output['text'] += '\n>' + out.decode('UTF-8').strip()
+        self.output.insert('end', '\n' + '> ' + out.decode('UTF-8').rstrip())
+        self.output.yview(tk.END)
 
     def sendCommand(self, gcode, resetarg=False, entry=None):
         """
@@ -279,8 +281,11 @@ class TwoAxisStage:
                 if i.lower().strip()[0] == 'f':
                     self.__setFeed(int(i.strip()[1:]))
 
-            #self.output['text'] += '\n' + time.strftime('%H:%M:%S', time.localtime()) + ': ' + gcode.rstrip()
-            self.output['text'] += '\n' + '~> ' + gcode.rstrip()
+            #self.output['text'] += '\n' + '~> ' + gcode.rstrip()
+
+            self.output.insert('end', '\n' + '~> ' + gcode.rstrip())
+            self.output.yview(tk.END)
+
             gcode = gcode.rstrip() + '\n'
             self.s.write(gcode.encode('UTF-8'))
             self.readOut()
@@ -387,11 +392,12 @@ class TwoAxisStage:
             for line in f:
                 if line != '' and line[0] != ';':
                     self.queue.enqueue(line)
-            print('Loaded ' + filename)
-            self.output['text'] += '\n~>' + ' Loaded '+filename
+            self.output.insert('end', '\n' + '> ' + ' Loaded ' +filename)
+            self.output.yview(tk.END)
         except FileNotFoundError:
             self.file_entry.delete(0, 'end')
-            self.output['text'] += '\n!> File does not exist'
+            self.output.insert('end', '\n' + '!> ' + ' File does not exist')
+            self.output.yview(tk.END)
 
     def runFile(self):
         """
@@ -434,7 +440,8 @@ class TwoAxisStage:
         if self.s:
             self.queue.clear()
             self.temprunning = False
-            self.output['text'] += '\n!> Current motion killed'
+            self.output.insert('end', '\n' + '!> ' + 'Current motion killed')
+            self.output.yview(tk.END)
 
     def calcDelay(self, currentpos, nextpos):
         """
