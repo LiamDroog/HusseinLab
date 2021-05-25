@@ -13,9 +13,9 @@ import h5py
 
 class TwoAxisStage:
 
-    def __init__(self, window, port, baud, startupfile):
+    def __init__(self, port, baud, startupfile):
         self.s = None
-        self.window = window
+        self.window = tk.Tk(className='\Plasma n Lasers n Shit')
         self.pos = [0., 0.]
         self.currentpos = 'X0 Y0'
         self.rate = 1
@@ -183,6 +183,9 @@ class TwoAxisStage:
         self.setKeybinds()
         self.Refresh()
 
+    def start(self):
+        self.window.mainloop()
+
     def setKeybinds(self):
         """
         binds keypress event to the onKeyPress function
@@ -304,7 +307,7 @@ class TwoAxisStage:
             try:
                 self.s = serial.Serial(port, baud)
             except:
-                print('Borked connection, try again.')
+                print('Borked connection, try again. Check the serial port.')
             else:
                 # Wake up grbl
                 self.s.write(b"\r\n\r\n")

@@ -1,4 +1,4 @@
-import h5py
+import h5py, os
 
 """
 Methods for easily working with HDF5 files outside of any program
@@ -6,8 +6,12 @@ Methods for easily working with HDF5 files outside of any program
 
 
 def createFile(filename):
-    f = h5py.File(filename, mode='a')
-    f.close()
+    if os.path.exists(filename):
+        return False
+    else:
+        f = h5py.File(filename, mode='a')
+        f.close()
+        return True
 
 
 def setMetadata(filename, attribute, value, path='/'):
@@ -26,6 +30,10 @@ def createDataset(filename, name, data, group='/', compression='gzip'):
             name,
             data=data,
             compression=compression)
+
+def getDataset(filename, name, group='/'):
+    with h5py.File(filename, mode='a') as h5f:
+        return h5f[group][name]
 
 
 def getMetadata(filename, path='/'):
@@ -49,7 +57,7 @@ def tree(filename):
     with h5py.File(filename, mode='a') as h5f:
         h5f.visititems(__print_attrs)
 
-
+    
 def __print_attrs(name, obj):
     try:
         print('/' + name)
