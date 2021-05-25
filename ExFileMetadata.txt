@@ -1,0 +1,7 @@
+date;today
+pulse duration;35e-15
+repetition rate;10
+power;15e12
+target material;copper
+ambient temp;22
+ambient humidity;27

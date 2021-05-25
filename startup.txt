@@ -3,7 +3,7 @@ $0=10
 ; step idle delay (ms)
 $1=150
 ; axis direction (2: x nominal, y reversed)
-$3=0
+$3=1
 ; status report (1: report machine coords)
 $10=1
 ; Feedback units (0: mm)
