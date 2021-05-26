@@ -8,7 +8,7 @@ def main():
 
 
     # pass window to gui class and initialize
-    stagectrl = TwoAxisStage('COM4', 115200, 'startup.txt')
+    stagectrl = TwoAxisStage('COM4', 115200, 'Data\\startup.txt')
 
     # start the gui loop
     stagectrl.start()

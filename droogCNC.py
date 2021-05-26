@@ -12,10 +12,14 @@ import h5py
 
 
 class TwoAxisStage:
-
+    """
+    test yeet
+    """
     def __init__(self, port, baud, startupfile):
         self.s = None
-        self.window = tk.Tk(className='\Plasma n Lasers n Shit')
+        #self.window = tk.Tk(className='\Plasma n Lasers n Shit')
+        self.window = tk.Toplevel()
+        self.window.title('Plasma n Lasers')
         self.pos = [0., 0.]
         self.currentpos = 'X0 Y0'
         self.rate = 1
@@ -182,13 +186,18 @@ class TwoAxisStage:
         self.__setTempFile()
         self.setKeybinds()
         self.Refresh()
+        self.initSerial(self.port, self.baud, self.startupfile)
 
     def start(self):
         self.window.mainloop()
 
+    def stop(self):
+        self.window.destroy()
+
     def setKeybinds(self):
         """
         binds keypress event to the onKeyPress function
+
         :return: None
         """
         self.window.bind('<KeyPress>', self.onKeyPress)
@@ -196,6 +205,7 @@ class TwoAxisStage:
     def Refresh(self):
         """
         Sets recurring event to update GUI every 50ms
+
         :return: None
         """
         self.lbl_pos.configure(text='X: %1.3f, Y:%1.3f, Feedrate: %d' % (self.pos[0], self.pos[1], self.feedrate))
@@ -204,6 +214,7 @@ class TwoAxisStage:
     def onKeyPress(self, event, wasd=False):
         """
         Allows for stage control via WASD - Not sure if keeping implementation
+
         :param event: onKeyPress event
         :param wasd: if True, wasd controls the stage
         :return: None
@@ -221,6 +232,7 @@ class TwoAxisStage:
     def jogX(self, v):
         """
         Jogs the X stage by the specified rate within the GUI
+
         :param v: float rate
         :return: None
         """
@@ -231,6 +243,7 @@ class TwoAxisStage:
     def jogY(self, v):
         """
         Jogs the Y stage by the specified rate within the GUI
+
         :param v: float rate
         :return: None
         """
@@ -241,6 +254,7 @@ class TwoAxisStage:
     def switchRate(self, v):
         """
         Switches current jog rate to specified input
+
         :param v: float jog rate
         :return:
         """
@@ -250,6 +264,7 @@ class TwoAxisStage:
     def readOut(self):
         """
         Reads out the reply from GRBL
+
         :return: None
         """
         # implement own method?
@@ -262,6 +277,7 @@ class TwoAxisStage:
     def sendCommand(self, gcode, resetarg=False, entry=None):
         """
         Sends command to GRBL. Checks if it is a comment, then sends command and updates DRO position accordingly
+
         :param gcode: command to be sent
         :param resetarg: used to detect if a command was sent via the input box so it knows to clear it
         :param entry: entry box instance to clear
@@ -284,8 +300,6 @@ class TwoAxisStage:
                 if i.lower().strip()[0] == 'f':
                     self.__setFeed(int(i.strip()[1:]))
 
-            #self.output['text'] += '\n' + '~> ' + gcode.rstrip()
-
             self.output.insert('end', '\n' + '~> ' + gcode.rstrip())
             self.output.yview(tk.END)
 
@@ -298,6 +312,7 @@ class TwoAxisStage:
     def initSerial(self, port, baud, filename):
         """
         Initalizes serial connection with grbl doohickey. Parses all startup commands from a text file input
+
         :param port: USB port board is plugged into
         :param baud: communication baud rate
         :param filename: startup filename containing startup grbl code
@@ -306,8 +321,9 @@ class TwoAxisStage:
         if not self.connected:
             try:
                 self.s = serial.Serial(port, baud)
-            except:
-                print('Borked connection, try again. Check the serial port.')
+            except Exception as e:
+                self.stop()
+                raise(e)
             else:
                 # Wake up grbl
                 self.s.write(b"\r\n\r\n")
@@ -338,6 +354,7 @@ class TwoAxisStage:
         """
         Sets relative movements active
         :param cmd: If true, send the G91 command, regardless, switch button text color to match
+
         :return: None
         """
         if self.s:
@@ -349,6 +366,7 @@ class TwoAxisStage:
     def setG90(self, cmd=True):
         """
         Sets absolute movements active
+
         :param cmd: If true, send the G90 command, regardless, switch button text color to match
         :return: None
         """
@@ -361,6 +379,7 @@ class TwoAxisStage:
     def setPos(self, cmd):
         """
         sets position of table on DRO
+
         :param cmd: gcode command containing new location
         :return: None
         """
@@ -382,6 +401,7 @@ class TwoAxisStage:
         """
         Opens file containing gcode. Does not parse for correctness.
         Inputs all non blank lines / comments into a queue for usage
+
         :param filename: File to open
         :return: None
         """
@@ -405,6 +425,7 @@ class TwoAxisStage:
     def runFile(self):
         """
         Used to run a file obained with getFile()
+
         :return: None
         """
         if self.s:
@@ -430,6 +451,7 @@ class TwoAxisStage:
     def finishRun(self):
         """
         Runs after file completion, removes contingency file since it is not needed.
+
         :return: None
         """
         print('File run complete')
@@ -438,6 +460,7 @@ class TwoAxisStage:
     def killSwitch(self):
         """
         effectively kills current gcode run by clearing queue. Note this isn't instantaneous
+
         :return: None
         """
         if self.s:
@@ -449,6 +472,7 @@ class TwoAxisStage:
     def calcDelay(self, currentpos, nextpos):
         """
         Calculates a lower end of the required delay between moved for the queue command system
+
         :param currentpos: Current position
         :param nextpos: Next position
         :return: time delay in ms
@@ -473,6 +497,7 @@ class TwoAxisStage:
     def __parsePosition(self, ipos):
         """
         Parses position for use with DRO
+
         :param ipos: input position
         :return: [x, y] list of current position
         """
@@ -487,6 +512,7 @@ class TwoAxisStage:
     def __parseParameters(self):
         """
         Parses parameters from a given input file into the parameters dictionary for usage
+
         :return: None
         """
         tmp = []
@@ -508,6 +534,7 @@ class TwoAxisStage:
     def __setTempFile(self):
         """
         Sets the temporary file name, unless it exists
+
         :return: None
         """
         if os.path.exists('temp.npy') or self.tempFile is not None:
@@ -519,6 +546,7 @@ class TwoAxisStage:
     def __saveTempData(self):
         """
         Saves temp data to temp file, if program is currently running it calls itself every 1000ms
+
         :return: None
         """
         if self.temprunning:
@@ -533,8 +561,8 @@ class TwoAxisStage:
         """
         Retrieves temp data from temp.npy if it exists and user calls it. Needs to be updated
         to reflect final changes in temp data stored once integrated into laser system
+
         :return: Last line that runfile stored before unexpected power loss
-        #todo save position and reload it
         """
         self.tempFile = 'temp.npy'
         currentline, t, self.filename, self.shotnum = np.load(self.tempFile)
@@ -546,6 +574,7 @@ class TwoAxisStage:
         Starts from an unexpected power loss. Retreives last known position from temp file.
         Issues: Target stage *could* be manually moved on us prior to reviving. User initiative to ensure
         nothing moves.
+
         :return: None
         """
         if self.s:
@@ -573,6 +602,7 @@ class TwoAxisStage:
     def __removeTempFile(self):
         """
         removes temp file at end of program run
+
         :return: None
         """
         os.remove(self.tempFile)
@@ -582,6 +612,7 @@ class TwoAxisStage:
         """
         Blinks a button between two colors, c1 and c2. Has logic for specific buttons to cease switching given a
         specific string as the text.
+
         :param button: target button instance
         :param c1: First color to switch to, string
         :param c2: Second color to switch to, string
@@ -598,24 +629,60 @@ class TwoAxisStage:
             self.window.after(delay, lambda: self.__blinkButton(button, c1, c2, delay))
 
     def __createDataFile(self):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single class
+        for cohesion
+
+        :return: None
+        """
         self.datafilename = str('-'.join(list(i.replace(':', '-') for i in time.asctime().split(' ')))) + '.hdf5'
         self.datafile = HDF5File(self.datafilename)
 
     def __createGroup(self, name):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         self.datafile.createGroup(name)
 
     def __setMetadataFromFile(self, mdfile, path='/'):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         metadata = self.__parseMetadataFile(mdfile)
         for key, value in metadata.items():
             self.datafile.setMetadata(key, value, path=path)
 
     def __setMetadata(self, key, value, path='/'):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         self.datafile.setMetadata(key, value, path=path)
 
     def __createDataSet(self, Group, Data):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         self.datafile.create_dataset(Group, Data, Data.shape)
 
     def __parseMetadataFile(self, filename):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         md = {}
         try:
             with open(filename, 'r') as f:
@@ -630,6 +697,7 @@ class TwoAxisStage:
     def __writeData(self, data):
         """
         Writes data to the class instances datafile
+
         :param data: Data to write
         :return: None
         """
@@ -638,6 +706,7 @@ class TwoAxisStage:
     def __setFeed(self, feedrate):
         """
         Sets feedrate based on input
+
         :param feedrate: New feedrate in mm/min
         :return: None
         """
@@ -645,7 +714,9 @@ class TwoAxisStage:
 
 
 class Queue:
-    # Creates a new empty queue:
+    """
+    Queue class for stage implementation. Should have as separate .py file.
+    """
     def __init__(self):
         self.__items = []  # init the  list / queue as empty
 
@@ -653,6 +724,7 @@ class Queue:
     def enqueue(self, item, idx=None):
         """
         Enqueue the element to the back of the queue
+
         :param item: the element to be enqueued
         :return: No returns
         """
@@ -668,6 +740,7 @@ class Queue:
     def dequeue(self):
         """
         Dequeue the element from the front of the queue and return it
+
         :return: The object that was dequeued
         """
         if len(self.__items) <= 0:
@@ -677,6 +750,7 @@ class Queue:
     def peek(self):
         """
         Returns the front-most item in the queue, and DOES NOT change the queue.
+
         :return: front-most item in the queue
         """
         if len(self.__items) <= 0:
@@ -685,12 +759,16 @@ class Queue:
 
     def is_empty(self):
         """
+        Checks if queue is empty or not
+
         :return: True if the queue is empty, and False otherwise
         """
         return len(self.__items) == 0
 
     def size(self):
         """
+        Returns number of items in queue
+
         :return: The number of items in the queue
         """
         return len(self.__items)
@@ -699,6 +777,7 @@ class Queue:
     def clear(self):
         """
         Removes all items from the queue
+
         :return: None
         """
         self.__items = []
@@ -706,6 +785,8 @@ class Queue:
     # Returns a string representation of the queue:
     def __str__(self):
         """
+        Returns string rep of queue
+
         :return: String representation of the queue
         """
         str_exp = ""
@@ -720,6 +801,12 @@ class HDF5File:
         self.datapath = datapath
 
     def append(self, group, dataset, values):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         with h5py.File(self.datapath, mode='a') as h5f:
             i = 0
             dset = h5f[group][dataset]
@@ -729,10 +816,22 @@ class HDF5File:
             h5f.flush()
 
     def setMetadata(self, attribute, value, path='/'):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         with h5py.File(self.datapath, mode='a') as h5f:
             h5f[path].attrs[attribute] = value
 
     def createDataset(self, group, dataset, shape, compression='gzip'):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         with h5py.File(self.datapath, mode='a') as h5f:
             h5f[group].create_dataset(
                 dataset,
@@ -741,5 +840,11 @@ class HDF5File:
                 compression=compression)
 
     def createGroup(self, name):
+        """
+        Preliminary HDF5 methods prior to implementation of HDF5Methods.py. Likely will remove and integrate single
+        class for cohesion
+
+        :return: None
+        """
         with h5py.File(self.datapath, mode='a') as h5f:
             h5f.create_group(name)
