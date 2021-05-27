@@ -24,3 +24,5 @@ $121=130
 g21 g90
 ; set zeros
 g92 x0 y0
+
+I s

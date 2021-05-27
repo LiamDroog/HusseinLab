@@ -37,9 +37,10 @@ class FileBrowser:
         self.currentpath = '/'
         self.currentgroup = None
         self.currentdataset = None
-        self.wraplength = 60
+        self.wraplength = 75
         self.outpadlen = 6
         self.anchorPos = [0, 5]
+        self.help_dict = {}
 
         self.errmessage = 'Command not found. Try $help'
 
@@ -52,31 +53,32 @@ class FileBrowser:
         self.sendentrybtn.grid(row=self.grid[1], column=4, sticky='ew')
 
         self.output = tk.Listbox(master=self.window)
-        self.output.grid(columnspan=5, rowspan=self.grid[1], row=0, column=0, sticky='nesw')
+        self.output.grid(columnspan=8, rowspan=self.grid[1], row=0, column=0, sticky='nesw')
         self.output.configure(bg='white')
         self.window.bind('<Return>', (lambda x: self.__parseCommand(self.entrybar.get())))
 
         self.scrollbar = tk.Scrollbar(master=self.window)
-        self.scrollbar.grid(column=5, row=0, rowspan=self.grid[1], sticky='nsw')
+        self.scrollbar.grid(column=8, row=0, rowspan=self.grid[1], sticky='nsw')
         self.output.config(yscrollcommand=self.scrollbar.set)
 
         self.cwd_label = tk.Label(master=self.window,
                                   text='Working Directory: ~/> /' + '/'.join(i for i in os.getcwd().split('\\')[-3:]))
-        self.cwd_label.grid(row=self.anchorPos[0], column=self.anchorPos[1] + 1, columnspan=10, sticky='w')
+        self.cwd_label.grid(row=self.anchorPos[0], column=self.anchorPos[1] + 4, columnspan=10, sticky='w')
 
         self.currentfile_label = tk.Label(master=self.window, text='Current file: ')
-        self.currentfile_label.grid(row=self.anchorPos[0] + 1, column=self.anchorPos[1] + 1, columnspan=10, sticky='w')
+        self.currentfile_label.grid(row=self.anchorPos[0] + 1, column=self.anchorPos[1] + 5, columnspan=10, sticky='w')
 
         self.currentfile_tree = tk.Listbox(master=self.window, bg='#F0F0F0')
-        self.currentfile_tree.grid(row=self.anchorPos[0]+2, column=self.anchorPos[1]+1,
+        self.currentfile_tree.grid(row=self.anchorPos[0]+2, column=self.anchorPos[1]+4,
                                    columnspan=6, rowspan=6, sticky='nsew')
+        self.__parseHelp()
 
-        inputstr = ['       __  __    ______ _           __    ____    ______  _             __',
+        self.headstr = ['       __  __    ______ _           __    ____    ______  _             __',
                  '      / / / /   / ____/  | |       / /   /  _/   / ____/  | |           / /',
                  '    / /_/  /  /___ \     | |     / /    / /    / __/        | |   /|    / / ',
                  '  / __  /   ____/ /      | |  / /   _/ /    / /___         | |  / |  / /  ',
                  '/_/ /_/  /_____/       |___/   /___/  /_____/        |__/|__/   ']
-        for i in inputstr:
+        for i in self.headstr:
             self.__sendOutput(i, head=' '*8)
         self.__sendOutput(time.asctime(), head='>> ')
         self.__sendOutput('Written by Liam Droog', head='>> ')
@@ -90,6 +92,13 @@ class FileBrowser:
         """
         self.window.mainloop()
 
+    def state(self):
+        try:
+            r = self.window.state()
+        except:
+            raise FileNotFoundError
+        else:
+            return r
     def __parseCommand(self, command):
         """
         Parses command typed from input location. Resets text in input box after completion.
@@ -99,48 +108,64 @@ class FileBrowser:
         """
         # parses commands from input box (typed). resets input box to nil
         self.__sendCommand(command)
-        try:
-            parsedcommand = command.lower().split('$')
-            i = parsedcommand[1]
-        except:
-            self.__errmessage()
-            return
+        if command[0] != '$':
+            try:
+                if command.strip() != '':
+                    i = command.lower().strip().split(' ')
+                    if i[0] == 'cls':
+                        self.__cls()
+                    elif i[0] == 'ls':
+                        self.__ls()
+                    elif i[0] == 'cd':
+                        self.__cd(i[1])
+            except Exception as e:
+                print(e)
+
+            finally:
+                self.entrybar.delete(0, 'end')
+                return
         else:
-            if i.strip() != '':
-                i = i.lower().strip().split(' ')
-                if i[0] == 'cls':
-                    self.__cls()
-                elif i[0] == 'ls':
-                    self.__ls()
-                elif i[0] == 'cd':
-                    self.__cd(i[1])
-                elif i[0] == 'getfile':
-                    self.__getFile(i[1])
-                elif i[0] == 'createfile':
-                    self.__createFile(i[1])
-                elif i[0] == 'setmetadata':
-                    self.__setMetadata(' '.join(j for j in i[1:]))
-                elif i[0] == 'getmetadata':
-                    if len(i) == 1:
-                        if self.currentfile is None:
-                            self.__sendOutput('No file selected')
-                            return
-                        self.__getMetadata(self.currentfile)
+            try:
+                parsedcommand = command.lower().split('$')
+                i = parsedcommand[1]
+            except:
+                self.__errmessage()
+                return
+            else:
+                if i.strip() != '':
+                    i = i.lower().strip().split(' ')
+                    if i[0] == 'getfile':
+                        self.__getFile(i[1])
+                    elif i[0] == 'createfile':
+                        self.__createFile(i[1])
+                    elif i[0] == 'setmetadata':
+                        self.__setMetadata(' '.join(j for j in i[1:]))
+                    elif i[0] == 'getmetadata':
+                        if len(i) == 1:
+                            if self.currentfile is None:
+                                self.__sendOutput('No file selected')
+                                return
+                            self.__getMetadata(self.currentfile)
+                        else:
+                            self.currentfile = i[1]
+                            self.__getMetadata(i[1])
+                    elif i[0] == 'tree':
+                        if len(i) == 1:
+                            if self.currentfile is None:
+                                self.__sendOutput('No file selected')
+                                return
+                            self.__tree(self.currentfile)
+                        else:
+                            self.__tree(i[1])
+                    elif i[0] == 'help':
+                        if len(i) == 1:
+                            self.__help()
+                        else:
+                            self.__help(i[1].strip())
                     else:
-                        self.currentfile = i[1]
-                        self.__getMetadata(i[1])
-                elif i[0] == 'tree':
-                    if len(i) == 1:
-                        if self.currentfile is None:
-                            self.__sendOutput('No file selected')
-                            return
-                        self.__tree(self.currentfile)
-                    else:
-                        self.__tree(i[1])
-                else:
-                    self.__errmessage()
-                    return
-        self.entrybar.delete(0, 'end')
+                        self.__errmessage()
+                        return
+            self.entrybar.delete(0, 'end')
 
     def __sendCommand(self, command):
         """
@@ -152,7 +177,7 @@ class FileBrowser:
         # executes command based off input command
         self.output.insert('end', '\n' + '~> ' + command.rstrip()[0:self.wraplength])
         for i in range(self.wraplength, len(command.rstrip()), self.wraplength):
-            self.output.insert('end', '\n' + '      ' + command.rstrip()[i:i + self.wraplength])
+            self.output.insert('end', '\n' + '           ' + command.rstrip()[i:i + self.wraplength])
         self.output.yview(tk.END)
 
     def __sendOutput(self, command, head='!>'):
@@ -163,7 +188,9 @@ class FileBrowser:
         :param head: leading character (!> for error, >> for generic, etc.)
         :return:
         """
-        self.output.insert('end', '\n' + head + command.rstrip())
+        self.output.insert('end', '\n' + head + command.rstrip()[0:self.wraplength])
+        for i in range(self.wraplength, len(command.rstrip()), self.wraplength):
+            self.output.insert('end', '\n' + '           ' + command.rstrip()[i:i + self.wraplength])
         self.output.yview(tk.END)
 
     def __cls(self):
@@ -173,6 +200,9 @@ class FileBrowser:
         :return: None
         """
         self.output.delete(0, tk.END)
+        for i in self.headstr:
+            self.__sendOutput(i, head=' '*8)
+        self.__sendOutput('Written by Liam Droog', head='>> ')
 
     def __ls(self):
         """
@@ -182,7 +212,10 @@ class FileBrowser:
         """
         self.__sendOutput(os.getcwd(), head='CWD: ')
         for i in os.listdir():
-            self.__sendOutput(i, head=' ' * 9 + '\u21B3')
+            if os.path.isdir(i):
+                self.__sendOutput(i, head=' ' * 9 + '\u21B3')
+            else:
+                self.__sendOutput(i, head=' ' * 9 + '\u2192')
 
     def __cd(self, dir):
         """
@@ -198,6 +231,44 @@ class FileBrowser:
             self.cwd_label.config(text='Working Directory: ~/> /' + '/'.join(i for i in os.getcwd().split('\\')[-3:]))
             self.currentfile = None
             self.currentfile_label.config(text='Current File: ')
+
+    def __help(self, input=None):
+        """
+        Syntax: $help command
+        This displays help for a given command or all if none are specified
+
+        :param input: string to parse for command
+        :return: None
+        """
+        if not input:
+            for key, val in self.help_dict.items():
+                self.__sendOutput('$' + key + ' Usage: ' + val, head='HELP: ')
+            return
+        if input not in self.help_dict.keys():
+            self.__sendOutput("Unknown command")
+            return
+        if input:
+            self.__sendOutput('$' + input + ' Usage: ' + self.help_dict[input], head='HELP: ')
+
+    def __parseHelp(self, file='Config/H5Help.txt', delim=';;'):
+        """
+        Parses commands and their respective help outputs from input text file
+
+        :param file: Target file
+        :param delim: Delimiter to split at
+        :return: None
+        """
+        try:
+            with open(file, 'r') as f:
+                for i in f:
+                    j = i.rstrip().split(delim)
+                    self.help_dict[j[0]] = j[1]
+        except FileNotFoundError:
+            print('Searching aimlessly for a file that does not exist.')
+            self.__sendOutput('Searching aimlessly for a file that does not exist.')
+        except Exception as e:
+            print('Something has gone horribly wrong - ' + str(e))
+            self.__sendOutput('Something has gone horribly wrong - ' + str(e))
 
     def __errmessage(self):
         """
@@ -215,6 +286,10 @@ class FileBrowser:
         :param filename: filename or path to target file, string
         :return: None
         """
+        if filename.split('.')[-1].lower() not in ['.hdf5', '.h5', '.he5']:
+            self.__sendOutput('Invalid file format, must have extension [.hdf5, .h5, .he5]', head=' ' * self.outpadlen)
+            return
+
         if os.path.exists(filename):
             self.currentfile = filename
             self.currentfile_label.config(text='Current File: ' + filename)
@@ -230,9 +305,10 @@ class FileBrowser:
         :param filename: Name of file to be created, string
         :return: None
         """
-        if filename[-5:].lower() != '.hdf5':
-            self.__sendOutput('Invalid file format, must have extension .hdf5', head=' ' * self.outpadlen)
+        if filename.split('.')[-1].lower() not in ['.hdf5', '.h5', '.he5']:
+            self.__sendOutput('Invalid file format, must have extension [.hdf5, .h5, .he5]', head=' ' * self.outpadlen)
             return
+
         if h5m.createFile(filename):
             self.__sendOutput('File successfully created', head=' ' * self.outpadlen)
             self.__getFile(filename)

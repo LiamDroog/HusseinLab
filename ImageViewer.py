@@ -24,22 +24,23 @@ class ImageFrame:
         im = Image.open(image)
         self.canvas.image = ImageTk.PhotoImage(
             im.resize((int(self.factor * im.size[0]), int(self.factor * im.size[1]))))
-        self.image_on_canvas = self.canvas.create_image(0, 0, image=self.canvas.image, anchor='nw')
+        im = self.canvas.create_image(0, 0, image=self.canvas.image, anchor='nw')
+        self.imageList.append(image)
+        self.image_on_canvas = im
 
         self.attributes_frame = tk.Frame(master=self.window, relief='raised', borderwidth=3)
         self.attributes_frame.grid(row=1, column=0, columnspan=6, rowspan=7, sticky='nsew')
         self.atext = tk.Label(master=self.attributes_frame, text='yeet')
         self.atext.pack()
 
-        self.nextbutton = tk.Button(master=self.window, text='>>')
+        self.nextbutton = tk.Button(master=self.window, text='>>', command=lambda: self.__changeimg('fwd'))
         self.nextbutton.grid(row=8, column=4, columnspan=2, sticky='nsew')
 
-
-        self.prevbutton = tk.Button(master=self.window, text='<<')
+        self.prevbutton = tk.Button(master=self.window, text='<<', command=lambda: self.__changeimg('bck'))
         self.prevbutton.grid(row=8, column=0, columnspan=2, sticky='nsew')
 
 
-        self.window.mainloop()
+        #self.window.mainloop()
 
     def changepos(self):
         pass
@@ -49,10 +50,24 @@ class ImageFrame:
 
     def addImage(self, image):
         self.imageList.append(image)
+        self.currentimage = image
         self.__showImage(image)
 
     def __showImage(self, image):
-        im = Image.open(image)
-        self.canvas.itemconfig(self.image_on_canvas,ImageTk.PhotoImage(
-            im.resize((int(self.factor * im.size[0]), int(self.factor * im.size[1])))))
+        img = Image.open(image)
+        img2 = ImageTk.PhotoImage(img.resize((int(self.factor * img.size[0]), int(self.factor * img.size[1]))))
+        im = self.canvas.create_image(0, 0, image=img2, anchor='nw')
+        self.canvas.itemconfig(self.image_on_canvas, image=im)
+        #  self.canvas.create_image(0, 0, image=im)
 
+    def __changeimg(self, dir):
+        print(self.imageList)
+        idx = self.imageList.index(self.currentimage)
+        print(idx)
+        if dir == 'fwd':
+            if idx < len(self.imageList):
+                self.__showImage(self.imageList[idx+1])
+
+        elif dir == 'bck':
+            if idx > 0:
+                self.__showImage(self.imageList[idx-1])
